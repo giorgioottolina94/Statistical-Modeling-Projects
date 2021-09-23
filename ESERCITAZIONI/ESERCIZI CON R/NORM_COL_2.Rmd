@@ -1,0 +1,199 @@
+---
+title: 'NORM_COL 2 - Data set: ABALONE'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il data set contiene informazioni riguardanti 4177 misurazioni relative ad "abaloni" con lo scopo di prevederne l'età. Gli attributi sono i seguenti:
+
+1. SEX: M, F
+2. LENGTH: lunghezza
+3. DIAMETER: diametro
+4. HEIGHT: altezza
+5. WHOLE_WEIGHT: peso intero
+6. SHUCKED_WEIGHT: peso della carne
+7. VISCERA_WEIGHT: peso delle viscere
+8. SHELL_WEIGHT: peso del guscio
+9. RINGS: età in anni
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione lineare
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\2.Norm-Col copy(3)\\2.Norm-Col\\dati.csv"),sep=";",header=F)
+d <- na.omit(d)
+names(d) <- c("SEX","LENGTH","DIAMETER","HEIGHT","WHOLE_WEIGHT","SHUCKED_WEIGHT","VISCERA_WEIGHT","SHELL_WEIGHT","RINGS")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- names(d)[2:ncol(d)]
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si  presentano innanzitutto le statistiche descrittive.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,4))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,4))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+```
+
+
+## REGRESSIONE
+
+Si effettua ora una regressione stepwise per scegliere quali variabili regredire rispetto alla variabile dipendente "lenght".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(LENGTH ~ DIAMETER +HEIGHT +WHOLE_WEIGHT+SHUCKED_WEIGHT+VISCERA_WEIGHT+SHELL_WEIGHT+RINGS, d)
+
+step <- ols_step_forward_p(mod1)
+plot(step)
+
+mod2 <- lm(LENGTH ~ DIAMETER + SHUCKED_WEIGHT + VISCERA_WEIGHT + SHELL_WEIGHT, d)
+
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+pander(white.test(mod2),big.mark=",")
+pander(dwtest(mod2),big.mark=",")
+
+pander(ols_vif_tol(mod2),big.mark=",")
+pander(ols_eigen_cindex(mod2),big.mark=",")
+```
+
+Il test F sulla bontà globale del modello porta a respingere l’ipotesi nulla di non significatività globale.
+L’$R^2$ ha un  valore superiore a 0.97 quindi le variabili esplicative spiegano molto bene la varianza della variabile esplicativa.
+
+Si passa ora all’analisi della collinearità per verificare se fra le variabili esplicative non vi siano variabili troppo correlate che potrebbero inficiare la validità dei risultati.
+La variance inflation e il condition index sono sempre inferiori alle rispettive soglie ( rispettivamente 20 e 30). Non c’è quindi collinearità.
+Si può quindi passare alla analisi della normalità dei residui cominciando dall’analisi degli scatter plot e della loro densità. 
+
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+par(mfrow=c(2,3))
+plot(d$DIAMETER,resid(mod1),pch=19,xlab="DIAMETER",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d$WHOLE_WEIGHT,resid(mod1),pch=19,xlab="WHOLE_WEIGHT",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d$VISCERA_WEIGHT,resid(mod1),pch=19,xlab="VISCERA_WEIGHT",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d$SHELL_WEIGHT,resid(mod1),pch=19,xlab="SHELL_WEIGHT",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(1:nrow(d),rstudent(mod1),pch=19,xlab="Observation Index",ylab="Residual Studentized",type="h")
+abline(h=2,lwd=3,lty=2,col=2)
+abline(h=-2,lwd=3,lty=2,col=2)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+
+plot(mod1,which=2,pch=19)
+
+plot(density(resid(mod1)),col=2,lwd=2,main="")
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="",add=T)
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
+
+Sia l’esame dgli scatter plot che l’andamento della distribuzione non perfettamente simmetrica pongono dubbi sulla reale normalità dei residui.
+
+Si devono individuare gli outliers (ovvero gli individui che almeno in un box-plot sono individuati da pallini che si discostano in modo netto dal resto della distribuzione). Si passa quindi a ristimare il modello senza outlier.
+
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+
+out <- c(
+  which(d$LENGTH%in%boxplot(d$LENGTH,plot=F)$out),
+  which(d$DIAMETER%in%boxplot(d$DIAMETER,plot=F)$out),
+  which(d$SHUCKED_WEIGHT%in%boxplot(d$SHUCKED_WEIGHT,plot=F)$out),
+  which(d$VISCERA_WEIGHT%in%boxplot(d$VISCERA_WEIGHT,plot=F)$out),
+  which(d$SHELL_WEIGHT%in%boxplot(d$SHELL_WEIGHT,plot=F)$out)
+)
+out <- unique(out)
+d_noout <- d[-out,]
+
+mod2 <- lm(LENGTH ~ DIAMETER + SHUCKED_WEIGHT + VISCERA_WEIGHT + SHELL_WEIGHT, d_noout)
+
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+pander(white.test(mod2),big.mark=",")
+pander(dwtest(mod2),big.mark=",")
+
+pander(ols_vif_tol(mod2),big.mark=",")
+pander(ols_eigen_cindex(mod2),big.mark=",")
+
+```

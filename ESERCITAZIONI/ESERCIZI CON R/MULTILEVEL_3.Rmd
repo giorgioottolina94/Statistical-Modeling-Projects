@@ -1,0 +1,306 @@
+---
+title: 'MULTILEVEL 3 - Data set: EXAM'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+In questo dataset sono contenute 4059 osservazioni e le seguenti 9 variabili:
+
+1. SCHOOL: id della scuola
+2. NORMEXAM: score ottenuto all'esame normalizzato
+3. SCHGEND: genere della scuola (mixed, boys, girls)
+4. SCHAVG: intake score a livello di scuola
+5. VR: verbal reasoning score a livello di studente
+6. INTAKE: intake score a livello di studente
+7. STANDLRT: LR test score
+8. SEX: genere (M, F)
+9. TYPE: tipologia di scuola (MXD, SNGL)
+10. STUDENT: id dello studente
+
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Analisi multilevel
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+library(car)
+library(sjstats)
+library(plotrix)
+library(sjPlot)
+library(sjmisc)
+library(lme4)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\esercizi (3) copia\\3.multilevel\\Exam.txt"),sep=" ")
+
+#-- Fisso la decima scuola come riferimento
+d$school <- factor(d$school)
+contrasts(d$school) <- contr.treatment(levels(d$school),base=which(levels(d$school) == '65'))
+
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("normexam","schavg","standLRT")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d))
+
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si propongono la matrice di correlazione tra le variabili e alcune descrittive di base.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+
+```
+
+Si propongono poi i box-plot per la variabile dipendente "normexam" per scuola:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+boxplot(d$normexam~d$school,main="Normexam by school",col="lightblue",ylab="Normexam")
+```
+
+
+## ANALISI DELLA VARIANZA (EFFETTI FISSI)
+
+Si propone innanziutto un modello di varianza a effetti fissi.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(normexam ~ school,d)
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+
+```
+
+Il test F ci mostra che esiste una struttura gerarchica dei dati in quanto è respinta l’ipotesi nulla che il modello non interpreti i dati e che le scuole non siano significative nello spiegare i risultati scolastici. Si possono quindi presentare i valori delle intercette relative alle scuole che sono calcolate come differenza dai valori attesi generali per il modello e quindi possono essere positive per le scuole più efficaci che la media delle scuole e negativi per quelle meno efficaci. Si può inoltre costruire una graduatoria dell’efficacia delle singole scuole.
+A questo punto si propone l’empty model.
+
+#### REGRESSIONE MULTILEVEL: Empty Model
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(normexam ~ (1| school),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+mod1_null <- lm(normexam ~ 1,d) 
+pander(anova(mod1,mod1_null),big.mark=",")
+
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")])
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+
+```
+
+Il modello interpreta bene i dati ma l’intercetta, unico effetto fisso non è significativo.
+Il coefficiente di correlazione intraclasse non è insignifiante benchè non particolaremnte elevato trattandosi di un modello empty.
+
+Si propongono quindi gli effetti casuali relativi ad ogni scuola che, come è si è detto sono espressi in termini di differenza dal valore atteso generale.
+Alcuni sono positivi altri negativi. Tra essi alcuni sono significativi sia pure per diversi livelli di significatività, vale come è noto il confronto tra diverse scuole in termini di efficacia non è svolto sulla base dei valori attesi ma in termini di intervalli di confidenza che appaiono nelle ultime due colonne: una scuola A è più efficace di un’altra B se l’estremo inferiore dell’ intervallo di confidenza di A è superiore all’estremo superiore dell’intervallo di confidenza di B.
+
+Si propone ora un mixed model con variabili esplicative "sex", "intake" e "standLRT".
+
+
+#### REGRESSIONE MULTILEVEL: Random Intercept
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(normexam ~ sex + intake + standLRT + (1| school),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")])
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+
+```
+
+Tutte  i  variabili esplicative sono risultano significativi.
+Si passa ora al mixed model con tutte le variabili esplicative.
+
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(normexam ~ vr + intake + sex + type + schgend + (1| school),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")])
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+
+```
+
+Il modello interpreta bene i dati e il coefficiente intraclasse diminuisce leggermente rispetto al precedente modello.
+Si passa ora la modello total effects che contiene due variabili esplicative, una con parametro casuale "standLRT" e l’altra con effetto fisso "schgend".
+
+
+#### REGRESSIONE MULTILEVEL: Random Slope
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(normexam ~ standLRT + schavg + (standLRT| school),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="standLRT")
+
+pander(res_int[1:10,c("ID","y","upper","lower")])
+pander(res_hw[1:10,c("ID","y","upper","lower")])
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+
+plotCI(1:nrow(res_hw),res_hw$y,ui=res_hw$upper, li=res_hw$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="StandLRT")
+abline(h=mean(res_hw$y),col=2,lwd=3,lty=2)
+
+```
+
+Il modello interpreta bene i dati e sia i parametri casuali relativi a intercetta che la variabile esplicativa risultano significativi come anche il coefficiente di correlazione di valore positivo. I parametri fissi (la parte fissa del parametro casuale relativo a "standLRT" scomponibile in una parte propriamente casuale e una fissa e il parametro relativo a "schavg") sono entrambi significativi. 
+Il test di tipo 3 sugli effetti fissi vine effettuato con la variabile casuale F invece che con la t ma dà risultati identici perchè i valori di F non sono altro che i quadrati dei valori di t.
+
+Si propone ora un altro random model con "intake" come variabile esplicativa con parametro fisso e "standRLT" con parametro casuale.
+
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(normexam ~ intake + (standLRT| school),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="standLRT")
+
+pander(res_int[1:10,c("ID","y","upper","lower")])
+pander(res_hw[1:10,c("ID","y","upper","lower")])
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+
+plotCI(1:nrow(res_hw),res_hw$y,ui=res_hw$upper, li=res_hw$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="StandLRT")
+abline(h=mean(res_hw$y),col=2,lwd=3,lty=2)
+```
+
+Si propongono ora un ultimo modello:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(normexam ~ standLRT + (intake| school),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="standLRT")
+
+pander(res_int[1:10,c("ID","y","upper","lower")])
+pander(res_hw[1:10,c("ID","y","upper","lower")])
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+```
+
+> >

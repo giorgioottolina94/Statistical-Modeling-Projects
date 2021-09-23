@@ -1,0 +1,139 @@
+---
+title: 'GLS 7 - Data set: CRIME'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il seguente dataset contiene il seguente set di variabili:
+
+1. M: percentuale di maschi in età 14-24 anni
+2. SO: dummy che indica se lo stato è del sud
+3. ED: media degli anni trascorsi a suola
+4. PO1: spese per la polizia nel 1960
+5. PO2: spese per la polizia nel 1959
+6. LF: tasso di forza lavoro
+7. M.F: numero di maschi per 1000 femmine
+8. POP: popolazione dello stato
+9. NW: numero di individui non bianchi 
+10. U1: tasso di occupazione dei maschi in età 14-24
+11. U2: tasso di occupazione dei maschi in età 35-39
+12. GDP: gross domestic product per head
+13. INEQ: income inequality
+14. PROB: probabilità di essere imprigionato
+15. TIME: tempo medio trascorso nelle prigioni dello stato
+16. Y: tasso di crimini
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione
+3. Gestione dell'autocorrelazione
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE 
+
+library(Hmisc)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+d <- UScrime
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("Ed","Po1","M.F","Pop","U1","U2","GDP","Time","y")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(3,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+
+```
+
+## REGRESSIONE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(y ~ Ed + GDP + U1 + U2 + M.F + Po1, d) #-- stima modello lineare semplice
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",") #-- white test
+pander(dwtest(mod1),big.mark=",") #-- Durbin-Whatson test
+```
+
+Gli errori risultano omoschedastici e incorrelati. Si ripropone ora il modello solo con le variabili significative.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod2 <- lm(y ~ U1 + U2 + M.F + Po1, d) #-- stima modello lineare semplice
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+pander(white.test(mod2),big.mark=",") #-- white test
+pander(dwtest(mod2),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(mod2,which=1,pch=19)
+plot(mod2,which=2,pch=19)
+plot(mod2,which=3,pch=19)
+plot(mod2,which=4,pch=19)
+abline(h=2*4/nrow(d),col=2,lwd=3,lty=2)
+
+plot(mod2,which=5,pch=19)
+```
+

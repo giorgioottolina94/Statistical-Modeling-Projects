@@ -1,0 +1,303 @@
+---
+title: 'LINEAR 1 - Data set: CAR'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il dataset 'CAR' è composto da 60 unità statistiche per le quali è riportato il valore di 8 variabili. In particolare, viene considerato un insieme di 60 automobili per ogniuna delle quali viene misurato il valore delle seguenti variabili:
+
+1. PRICE: prezzo di listino dell'autovettura (in particolare di un modello standard), espresso in dollari
+2. COUNTRY: paese d'origine
+3. RELIABILITY: grado di affidabilità (fattore codificato in livelli da 1 a 5)
+4. MILIAGE: (consumo di carburante espresso in miglia / dollaro)
+5. TYPE: tipologia di autovettura
+6. WEIGHT: peso a vuoto misurato in libbre
+7. DISP: capacità del motore (cilindrata), in litri
+8. HP: potenza del veicolo
+
+Variabile dipendente: PRICE. Le caratteristiche del veicolo sono variabili esplicative (o covariate).
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione lineare semplice
+3. Test di correlazione dei residui
+4. Modello quadratico (con e senza outlier)
+5. Modelli log lineari
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE 
+
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\3.lin(5)\\1.linear\\car.test.txt"),sep=" ")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("Price","Mileage","Weight","Disp.","HP")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+
+```
+
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+```
+
+Non ci sono variabili collineari.
+
+
+## REGRESSIONE
+
+Si regredisce il "prezzo" su "disp" dapprima in termini lineari.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(Price~Disp.,d) #-- stima modello lineare semplice
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+
+```
+
+Il modello interpreta i dati e "Disp"" risulta essere significativa ma il fitting è molto basso ($R^2=0.2359$). Il test di White accetta l’ipotesi di omoschedaticità  e il test di Durbin-Watson quella di non correlazione fra i residui.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(white.test(mod1),big.mark=",") #-- white test
+pander(dwtest(mod1),big.mark=",") #-- Durbin-Whatson test
+```
+
+
+Si consideri ora il grafico "Prezzo"" vs "Disp":
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d$Disp.,d$Price,pch=19,col=1,xlab="Disp",ylab="Price") #-- scatter plot
+```
+
+L’andamento del grafico suggerisce che il legame non sia lineare. Si propone quindi un modello quadratico $Price = f(Disp,Disp^2)$.
+
+
+## REGRESSIONE CON MODELLO QUADRATICO
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod2 <- lm(Price~Disp.+I(Disp.^2),d) #-- stima del modello quadratico
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+```
+
+Il fitting raddoppia (osservare l'$R^2$) e anche la variabile $Disp^2$ risulta essere significativa: il modello quindi è realmente quadratico come si vede dalla seguente rappresentazione grafica:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+f_mod2 <- function(x) coefficients(mod2)[1]+coefficients(mod2)[2]*x+coefficients(mod2)[3]*x^2
+
+plot(d$Disp.,d$Price,pch=19,xlab="Disp",ylab="Price")
+abline(mod1,col=2,lwd=3) #-- abline del modello lineare
+curve(f_mod2,add=T,col="blue",lwd=3,lty=2) #-- abline del modello quadratico
+```
+
+E’ confermata omoschedasticità e non correlazione degli errori.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(white.test(mod2),big.mark=",") #-- white test
+pander(dwtest(mod2),big.mark=",") #-- Durbin-Whatson test
+```
+
+La rappresentazione grafica suggerisce però la presenza di outlier. Si analizza perciò la distribuzione dei valori estremi di "Price"" e "Disp".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+d$ESTREME <- 1 #-- inserisco una nuova colonna del dataset con obs. estreme
+
+#-- ora applico la funzione FIND_EXTREME_OBSERVARION(variabile di interesse,fattore). 
+#-- si include anche l'osservazione 23 come outlier.
+d$ESTREME[c(FIND_EXTREME_OBSERVARION(d$Price,2),FIND_EXTREME_OBSERVARION(d$Disp.,2),23)] <- 2
+
+plot(d$Disp.,d$Price,pch=19,col=d$ESTREME,xlab="Disp",ylab="Price")
+
+#-- d_noout è un nuovo data frame senza le osservazioni outlier
+d_noout <- d[-c(FIND_EXTREME_OBSERVARION(d$Price,2),FIND_EXTREME_OBSERVARION(d$Disp.,2),23),]
+```
+
+I valori estremi si discostano di molto dagli altri valori, come si vede dal grafico. Pertanto si procede ad eliminare gli outlier e a stimare nuovamente il modello. Si ripropone il modello lineare senza outlier.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod_noout <- lm(Price~Disp.,d_noout) #-- modello senza outlier
+pander(summary(mod_noout),big.mark=",")
+pander(anova(mod_noout),big.mark=",")
+pander(white.test(mod_noout),big.mark=",") #-- white test
+pander(dwtest(mod_noout),big.mark=",") #-- Durbin-Whatson test
+```
+
+Il fitting migliora moltissimo e "Disp" rimane significativo. Gli errori sono ancora sferici anche se la non correlazione non è nettissima.
+
+
+Tuttavia osservando il grafico residui-prezzi e il grafico della regressione lineare si nota ancora la presenza di una non linearità nella relazione non interpretata dall’interpolante lineare stessa.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d_noout$Disp.,resid(mod_noout),xlab="Disp",ylab="Residui",pch=19)
+plot(d_noout$Disp.,d_noout$Price,xlab="Disp",ylab="Price",pch=19)
+abline(mod_noout,col=2,lwd=3)
+```
+
+Si propone quindi un modello quadratico (come fatto precedentemente) ma senza outlier.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod2_noout <- lm(Price~Disp.+I(Disp.^2),d_noout)
+pander(summary(mod2_noout),big.mark=",")
+pander(anova(mod2_noout),big.mark=",")
+```
+
+Il modello migliora ancora il fitting e "Disp" risulta significativo come anche $Disp^2$ ma in modo non così netto come nel caso con outlier.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+f_mod2_noout <- function(x) coefficients(mod2_noout)[1]+coefficients(mod2_noout)[2]*x+coefficients(mod2_noout)[3]*x^2
+
+plot(d_noout$Disp.,d_noout$Price,pch=19,xlab="Disp",ylab="Price")
+abline(mod_noout,col=2,lwd=3) #-- abline del modello lineare
+curve(f_mod2_noout,add=T,col="blue",lwd=3,lty=2) #-- abline del modello quadratico
+```
+
+> >
+
+Il modello quadratico ha errori non solo omoschedastici ma con molta più chiarezza, anche incorrelati.
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+pander(white.test(mod2_noout),big.mark=",") #-- white test
+pander(dwtest(mod2_noout),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+Proviamo ora se un modello cubico è più adatto ad interpretare i dati:
+
+> >
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod3_noout <- lm(Price~Disp.+I(Disp.^2)+I(Disp.^3),d_noout) #-- modello cubico
+pander(summary(mod3_noout),big.mark=",")
+pander(anova(mod3_noout),big.mark=",")
+```
+
+Il modello sembra mantenere lo stesso fitting ma "disp", $dist^2$ e $disp^3$ non risultano significativi. Quindi si opta per ora sul modello quadratico. Si verifica ora un modello lineare-log in cui la variabile esplicativa $log(Disp)$.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod4_noout <- lm(Price~log(Disp.),d_noout) #-- stima modello log lineare
+pander(summary(mod4_noout),big.mark=",")
+pander(anova(mod4_noout),big.mark=",")
+```
+
+$Log(Disp)$ risulta significativa ma il fitting peggiora leggermente ($R^2=0.5829$). Si verifica ora la sfericità dei residui:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+pander(white.test(mod4_noout),big.mark=",")
+pander(dwtest(mod4_noout),big.mark=",") #-- Durbin-Whatson test
+```
+
+Gli errori sono non correlati ma non sono più omoschedastici per $\alpha=0.1$. Quindi si rimane sulla scelta del modello quadratico.
+Si verifica ora l’opportunità di un modello loglineare in cui come variabile dipendente si abbia $log(Price)$.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod5_noout <- lm(I(log(Price))~Disp.,d_noout) #-- stima modello log lineare
+pander(summary(mod5_noout),big.mark=",")
+pander(anova(mod5_noout),big.mark=",")
+pander(white.test(mod5_noout),big.mark=",") #-- white test
+pander(dwtest(mod5_noout),big.mark=",") #-- Durbin-Whatson test
+```
+
+"Disp" è significativo, gli errori sferici ma il fitting peggiora pertanto non si assume neanche questo modello. Si propone quindi un modello log-log in cui si abbia come variabile dipendente $log(Price)$ e come variabile esplicativa $log(Disp)$.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+mod6_noout <- lm(I(log(Price))~I(log(Disp.)),d_noout) #-- stima modello log lineare
+pander(summary(mod6_noout),big.mark=",")
+pander(anova(mod6_noout),big.mark=",")
+pander(white.test(mod6_noout),big.mark=",") #-- white test
+pander(dwtest(mod6_noout),big.mark=",") #-- Durbin-Whatson test
+```
+
+In definitiva, $log(Disp)$ è significativo, gli errori chiaramente sferici e il fitting migliora ($R^2=0.6171$): si sceglie quindi in definitiva il modello log-log. Si potrebbe ovviamente proseguire costruendo modelli più complessi che comprendano il logaritmo della variabile esplicativa e suoi termini quadratici.

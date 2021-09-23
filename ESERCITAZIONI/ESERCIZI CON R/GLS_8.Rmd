@@ -1,0 +1,152 @@
+---
+title: 'GLS 8 - Data set: QUAKES'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il dataset riguarda i terremoti rilevati vicino a Fiji. Le osservazioni rappresentano i movimenti sismici rilevati nel 1964 con magnitudo maggiore di 4. Le variabili sono:
+
+1. LAT: latitudine
+2. LONG: longitudine
+3. DEPTH: profondità
+4. MAG: magnitudo
+5. STATIONS: stazione
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione
+3. Gestione dell'autocorrelazione
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE 
+
+library(Hmisc)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\1.Error-GLS copy(8)\\8.Error-GLS\\QUAKES.TXT"),sep=" ")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("lat","long","depth","mag")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+```
+
+## REGRESSIONE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(mag ~ stations + depth + long + lat , d) #-- stima modello lineare semplice
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",") #-- white test
+pander(dwtest(mod1),big.mark=",") #-- Durbin-Whatson test
+```
+
+Le 4 variabili esplicative "stations", "depth", "long", "lat" risultano tutte significative. Il valore dell’$R^2$ è molto buono e il modello interpreta bene la variabile dipendente.
+
+Si verifica ora la multicollinearità delle variabili esplicative.
+
+Per tutti e 4 i valori l’indice di tolleranza è quasi prossimo a uno e quindi mostra che non esiste collinearità. 
+
+Il condition index perfeziona tale conclusione perché se risulta debolmente dipendente per il quarto auto valore mentre il quinto assume valore molto elevato andando a spiegare quota di varianza elevata per l’intercetta e la variabile "long".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(ols_eigen_cindex(mod1),big.mark=",")
+pander(ols_vif_tol(mod1),big.mark=",")
+```
+
+Si verifica ora la normalità. Si analizza innanzitutto la distribuzione dei residui e il box plot.
+L’istogramma si sovrappone bene alla curva normale teorica. 
+
+Per ciò che concerne il box plot dei residui si verifica che c’è simmetria intorno alla media.  Anche la distribuzione cumulata dei residui empirici si sovrappone a quella dei residui della distribuzione teorica normale
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(mod1,which=1,pch=19)
+plot(mod1,which=2,pch=19)
+plot(mod1,which=3,pch=19)
+plot(mod1,which=4,pch=19)
+abline(h=2*4/nrow(d),col=2,lwd=3,lty=2)
+
+plot(mod1,which=5,pch=19)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(covratio(mod1),pch=19,ylab="Covratio")
+abline(h=1-3*7/nrow(d),lwd=3,col=2,lty=2)
+abline(h=1+3*7/nrow(d),lwd=3,col=2,lty=2)
+
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
+
+I test, in particolare Shapiro-Wilk (vicino a  1 come valore) e Kolmogorov-Smirnov, cadono tutti nella regione di accettazione: non respingo l’ipotesi nulla di normalità dei residui.

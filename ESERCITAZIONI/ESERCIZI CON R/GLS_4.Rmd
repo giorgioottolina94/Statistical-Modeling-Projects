@@ -1,0 +1,181 @@
+---
+title: 'GLS 4 - Data set: LONGLEY'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+I dati sono relativi ad una serie di dati macroeconomici che forniscono un esempio di regressione altamente collineare. I dati si riferiscono al periodo 1947-1962. Le variabili sono le seguenti:
+
+1. GNP: prodotto nazionale lordo
+2. UNEMPLOYED: numero di disoccupati
+3. ARMED.FORCES: numero di persone nelle forze armate
+4. POPULATION: numero di popolazione non istituzionalizzata con più di 14 anni
+5. EMPLOYED: numero di persone impiegate
+6. TIME: anni trascorsi dal 1947
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione
+3. Gestione dell'autocorrelazione
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE 
+
+library(Hmisc)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\1.Error-GLS copy(8)\\4.Error-GLS\\longley.txt"),sep=" ")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("GNP.deflator","GNP","Unemployed","Armed.Forces","Population","Employed")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+
+```
+
+
+## REGRESSIONE
+
+Data questa situazione si utilizzano come variabili esplicative rispetto a "GNP" solo "Unemployed", "Armed Forces", "Population", "Employed".
+Gli errori sono omoschedastici secondo il test di White. Il fitting è altissimo ma le uniche variabili veramente significative sono "Population" e "Employed".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(GNP ~ Unemployed + Armed.Forces + Population + Employed, d) #-- stima modello lineare semplice
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",") #-- white test
+pander(dwtest(mod1),big.mark=",") #-- Durbin-Whatson test
+```
+
+Il modello interpreta bene la variabile dipendente e il fitting è molto elevato. I parametri significativi sono quelli relativi a "partic" e "degrees". Gli errori sono normali come si evince dalla distribuzione dei residui.
+
+Dal grafico residui-anni in cui i residui non fluttuano intorno allo 0 si intuisce autocorrelazione di 1° grado positiva in quanto si vede un andamento sistematico di dipendenza tra gli errori e errori ritardati nello stesso verso. Poi si intuisce la presenza di un ciclo che presuppone autocorrelazione di ordine superiore. In ogni caso l’autocorrelazione positiva di ordine 1 è confermata dal test Durbin Watson che respinge l’ipotesi di non autocorrelazione di ordine 1.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(d$year,resid(mod1),pch=19,xlab="Year",ylab="Residuo",type="l",col=1,lwd=2)
+text(d$year,resid(mod1),d$year,pos=1,cex=.6)
+abline(h=0,lwd=2,lty=2,col=2)
+```
+
+Si propone quindi un modello con errori incorrelati costruendo variabili e errori incorrelati.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+autocorr <- acf(resid(mod1),main="Autocorrelazion",lwd=2)
+pander(data.frame(LAG=autocorr$lag,VALUE=autocorr$acf)[1:5,])
+
+d1  <- d
+d1$resid <- resid(mod1)
+d1$resid_l1 <- Lag(d1$resid,1)
+
+d1$GNP_t <- d1$GNP-0.2237*Lag(d1$GNP,1)
+d1$Unemployed_t <- d1$Unemployed-0.2237*Lag(d1$Unemployed,1)
+d1$Armed.Forces_t <- d1$Armed.Forces-0.2237*Lag(d1$Armed.Forces,1)
+d1$Population_t <- d1$Population-0.2237*Lag(d1$Population,1)
+d1$Employed_t <- d1$Employed-0.2237*Lag(d1$Employed,1)
+
+d1$int_tild <- 1-0.2237
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod2 <- lm(GNP_t ~ 0 + int_tild + Unemployed_t + Armed.Forces_t + Population_t + Employed_t,d1)
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+pander(white.test(mod2),big.mark=",") #-- white test
+pander(dwtest(mod2),big.mark=",") #-- Durbin-Whatson test
+```
+
+Il modello ha sempre un ottimo fitting, "Population" e "Employed" sono significative, il test di White certifica ancora la omoschedasticità e il test di Durbin Watson si muove quindi verso la regione di accettazione della non correlazione ma non è soddisfacente. Infatti sé visto che esistono autocorrelazioni di ordine superiore.  
+
+La rappresentazione grafica mostra come non sono state eliminate autocorrelazioni di ordine superiore (il secondo modello AR(1) è evidenziato in blu).
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(d$year,resid(mod1),pch=19,xlab="Year",ylab="Residuo",type="l",col=1,lwd=2)
+text(d$year,resid(mod1),d$year,pos=1,cex=.6)
+abline(h=0,lwd=2,lty=2,col=2)
+
+lines(d$year[-1],resid(mod2),pch=19,xlab="Year",ylab="Residuo",type="l",col=4,lwd=2)
+```
+
+Si prova quindi ad utilizzare la funzione ARIMA (con OLS è assolutamente simile) che tenga conto di tali autocorrelazioni di ordine superiore:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod4 <- arima(d1$GNP, order=c(1,0,0), xreg = d1[,c("Unemployed","Armed.Forces","Population","Employed")],method="ML") 
+mod4
+coeftest(mod4)
+durbinWatsonTest(as.numeric(mod4$residuals))
+```
+

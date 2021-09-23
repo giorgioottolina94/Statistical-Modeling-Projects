@@ -1,0 +1,443 @@
+---
+title: 'LINEAR 8 - Data set: ANTROP'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il dataset è costituito da alcune misure antropometriche rilevate su 248 uomini.
+
+1. ETA': età in anni compiuti
+2. PESO: peso rilevato in libbre
+3. ALTEZ: altezza (cm)
+4. COLLO: circonferenza del collo (cm)
+5. TORACE: circonferenza toracica (cm)
+6. ADDOM: circonferenza addominale (cm)
+7. ANCA: circonferenza dell'anca (cm)
+8. COSCIA: circonferenza della coscia (cm)
+9. GINOCCH: circonferenza del ginocchio (cm)
+10. CAVIGLIA: circonferenza della caviglia (cm)
+11. BICIPITE: circonferenza del bicipite in estensione (cm)
+12. AVANBR: circonferenza dell'avambraccio (cm)
+13. POLSO: circonferenza del polso (cm)
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione lineare
+3. Diagnostiche ed analisi dei residui
+
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\4.tutto(4)\\2.tutto\\ANTROP.TXT"),sep="\t")
+d$bmi <- ((d$peso/2.2046)/(d$altez/100)^2)
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("bmi","addom","coscia","bicipite")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si  presentano innanzitutto le statistiche descrittive
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+
+
+```
+
+
+## REGRESSIONE - Esempio 1
+
+Si effettua ora la regressione multipla di "bmi" su "addom", "coscia" e "bicipite".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(bmi ~ addom + coscia + bicipite,d)
+
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+
+```
+
+Il modello risulta significativo e tutti i parametri risultano significativi. Si effettua ora una diagnostica sugli errori cominciando da rappresentazioni grafiche.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(mod1,which=1,pch=19)
+plot(mod1,which=2,pch=19)
+plot(mod1,which=3,pch=19)
+plot(mod1,which=4,pch=19)
+abline(h=2*4/nrow(d),col=2,lwd=3,lty=2)
+
+plot(mod1,which=5,pch=19)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+par(mfrow=c(2,2))
+plot(d$addom,resid(mod1),pch=19,xlab="Addom",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d$coscia,resid(mod1),pch=19,xlab="Coscia",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d$bicipite,resid(mod1),pch=19,xlab="Bicipite",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(1:nrow(d),rstudent(mod1),pch=19,xlab="Observation Index",ylab="Residual Studentized",type="h")
+abline(h=2,lwd=3,lty=2,col=2)
+abline(h=-2,lwd=3,lty=2,col=2)
+
+```
+
+Nel Q-Q plot e dalla distribuzione teorica dei residui si vede una distribuzione normale poiché i quantili della distribuzione teorica normale si sovrappongono a quelli della distribuzione empirica. Tuttavia nella parte superiore del Q-Q plot si osserva la presenza di valori anomali in quanto  i quantili della distribuzione teorica normale in questa parte non si sovrappongono a quelli della distribuzione empirica.
+
+La presenza di valori anomali è confermata dal grafico residui-valori previsti.
+
+Per verificare se effettivamente esistono tali outlier si considera nel grafico il grafico dei leverage e delle distanze di Cook che mostrano con chiarezza la presenza di valori al di fuori dei limiti di tolleranza. Per ulteriore verifica si considera quindi il grafico dei DFFITS.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+
+plot(covratio(mod1),pch=19,ylab="Covratio")
+abline(h=1-3*7/nrow(d),lwd=3,col=2,lty=2)
+abline(h=1+3*7/nrow(d),lwd=3,col=2,lty=2)
+
+plot(dffits(mod1),pch=19,ylab="DFFITS",type="h")
+abline(h=2*sqrt(4/nrow(d)),lwd=3,col=2,lty=2)
+abline(h=-2*sqrt(4/nrow(d)),lwd=3,col=2,lty=2)
+
+dfbetaPlots(mod1,pch=19,main="DFBETA")
+
+```
+
+Anche in questo caso si vedono punti al di fuori delle soglie di tolleranza.
+Facendo riferimento a questa misura dei DFFITS si elencano i punti influenti o outlier: 19, 29, 35, 38, 39, 51, 76, 104, 124, 136, 174, 188, 204, 212, 236, 238.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+d1 <- d[-c(19, 29, 35, 38, 39, 51, 76, 104, 124, 136, 174, 188, 204, 212, 236, 238),]
+mod1 <- lm(bmi ~ addom + coscia + bicipite,d1)
+
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(mod1,which=1,pch=19)
+plot(mod1,which=2,pch=19)
+plot(mod1,which=3,pch=19)
+plot(mod1,which=4,pch=19)
+abline(h=2*4/nrow(d1),col=2,lwd=3,lty=2)
+
+plot(mod1,which=5,pch=19)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+par(mfrow=c(2,2))
+plot(d1$addom,resid(mod1),pch=19,xlab="Addom",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d1$coscia,resid(mod1),pch=19,xlab="Coscia",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(d1$bicipite,resid(mod1),pch=19,xlab="Bicipite",ylab="Residual")
+abline(h=0,lwd=3,lty=2,col=2)
+
+plot(1:nrow(d1),rstudent(mod1),pch=19,xlab="Observation Index",ylab="Residual Studentized",type="h")
+abline(h=2,lwd=3,lty=2,col=2)
+abline(h=-2,lwd=3,lty=2,col=2)
+
+```
+
+Per verificare più precisamente la normalità dei residui si propongono i test sulla normalità dei medesimi.
+
+Tutti i test accettano l’ipotesi nulla di normalità dei residui.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
+
+Si verifica l’omoschedasticità e l’incorrelazione dei residui. Già i grafici fanno intuire che i residui sono omoschedastici e l’incorrelati tuttavia si effettua comunque una verifica con gli appositi test.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+```
+
+## REGRESSIONE - Esempio 2
+
+In un secondo esempio si considerano 5 variabili "peso" (var.dip) e "eta", "altezza", "circonferenza toracica", "circonferenza addominale".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+VAR_NUMERIC <- c("eta","peso","altez","torace","addom")
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+```
+
+Si osserva la forte correlazione esistente tra circonferenza torace e addominale. Si regrediscono ora le 4 variabili esplicative sulla variabile dipendente.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(peso ~ eta + altez + torace + addom, d)
+
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+
+```
+
+E’ respinta dal test F l’ipotesi nulla che il modello nel suo complesso non spieghi la variabile dipendente. Inoltre il modello ha un ottimo fitting (0.9405) e tutte le variabili risultano significative.
+Per quanto riguarda la collinearità vediamo che l’indice di tolleranza riporta valori bassi per le variabili circonferenza addominale e toracica; tuttavia la variance inflation si mantiene ampiamente sotto la soglia di 20.  
+Per prendere una decisione analizziamo le altre diagnostiche di collinearità.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(ols_eigen_cindex(mod1),big.mark=",")
+pander(ols_vif_tol(mod1),big.mark=",")
+```
+
+Gli ultimi due autovalori hanno valori molto piccoli e condition index ampiamente oltre la soglia di 30. Il 4 autovalore spiega le varibili "circonf", "addom" e "torace" rispettivamente per il 68.8% e 79.8%. Se ne deduce che i due regressori sono correlati (è confermato il suggerimento dato dall’indice di tolleranza).
+
+Si ristima quindi modello lineare escludendo la variabile esplicativa circonferenza toracica.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(peso ~ eta + altez + addom, d)
+
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(ols_eigen_cindex(mod1),big.mark=",")
+pander(ols_vif_tol(mod1),big.mark=",")
+```
+
+Il modello è ancora significativo con un elevatissimo $R^2$ (0.9085) e tutte le variabili risultano ancora significative. In questo caso però l’indice di tolleranza ha sempre valori prossimi a 1 e la variance inflation è molto bassa. Il condition index è elevato per gli ultimi 2 valori ma vediamo come ogni autovalore spieghi una proporzione di varianza elevata per variabili esplicative diverse (il 2° età, il 3° circonf. addom, il 4° altezza). Il problema di col inearità è quindi risolto.
+
+Affrontiamo ora il problema della normalità degli errori.  Si consideri innanzitutto la distribuzione dei residui
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
+
+Possiamo accettare l'ipotesi di normalità dei residui.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(mod1,which=1,pch=19)
+plot(mod1,which=2,pch=19)
+plot(mod1,which=3,pch=19)
+plot(mod1,which=4,pch=19)
+abline(h=2*4/nrow(d1),col=2,lwd=3,lty=2)
+
+plot(mod1,which=5,pch=19)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(1:nrow(d),rstudent(mod1),pch=19,xlab="Observation Index",ylab="Residual Studentized",type="h")
+abline(h=2,lwd=3,lty=2,col=2)
+abline(h=-2,lwd=3,lty=2,col=2)
+
+```
+
+Si osserva tuttavia che vi sono osservazioni influenti come anche dai grafici dei residui studentizzati, della distanza di Cook e dei quantili dei residui.
+
+
+## REGRESSIONE - Esempio 3
+
+Si propone un terzo esempio in cui la variabile dipendente è il "peso" e le variabili esplicative sono "circonferenza torace", "collo", "addome", "coscia" Si considerano innanzitutto le analisi descrittive. 
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+VAR_NUMERIC <- c("peso","torace","collo","addom","coscia")
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(peso ~ torace + collo + addom + coscia, d)
+
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(ols_eigen_cindex(mod1),big.mark=",")
+pander(ols_vif_tol(mod1),big.mark=",")
+```
+
+Gli indici di tolleranza e varianza multifattoriale sono rispettivamente molto lontani da zero e molto al di sotto della soglia di 20.
+Tuttavia guardando il condition index si vede che per il 3, 4, 5 autovalore è superiore alla soglia di 30. 
+
+Si osserva poi guardando la proporzione di varianza associata ad ogni variabile che tale proporzione è molto elevata per "coscia" in corrispondenza dell’autovalore 3 (0.96), per "collo" in corrispondenza dell’autovalore 4 (0.81), per "torace" in corrispondenza dell’autovalore 5 (0.95). 
+Il modello è quindi inficiato da multicollinearità: occorre riconcepirlo in un altro modo per superare il problema.
+ 
+ 
+ 

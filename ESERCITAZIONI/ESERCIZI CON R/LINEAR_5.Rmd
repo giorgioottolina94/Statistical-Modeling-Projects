@@ -1,0 +1,359 @@
+---
+title: 'LINEAR 5 - Data set: NAZIONI'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Nel dataset in oggetto sono riportati i risultati di un'indagine effettuata nel 1995 su 66 nazioni riguardanti alcuni fra gli aspetti socio-demografici prevalenti. Le variabili presenti nel dataset sono le seguenti: 
+
+1. DENSITA': densità di popolazione
+2. URBANA: percentuale di popolazione residente nelle città
+3. VITAFEM: speranza di vita alla nascita delle donne
+4. VITAMAS: speranza di vita alla anascita dei maschi
+5. ALFABET: percentuale di alfabetizzati sul totale della popolazione
+6. PIL: prodotto interno lordo pro-capite
+7. RELIG: religione prevalente nella nazione (1=cattolica, 2=ortodossa, 3=protestante)
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione lineare e polinomiale
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\3.lin(5)\\5.linear\\nazioni.csv"),sep=";")
+d$pil <- as.numeric(gsub(",","",paste(d$pil))) #-- trasformo pil in variabile numerica
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("densita","urbana","vitafem","vitamas","alfabet","pil")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si propongono la matrice di correlazione tra le variabili e alcune descrittive di base.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+
+```
+
+Si nota la fortissima correlazione fra "deaths" e "drivers", come era ragionevole aspettarsi.
+
+
+## REGRESSIONE
+
+Si propone una regressione di "urbana" su "pil".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(urbana~pil,d) 
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod1),big.mark=",") #-- Durbin-Whatson test
+```
+
+Pil è significativo ma il fitting è modesto ($R^2=0.291$). Dai test si osserva che gli errori sono non correlati ma eteroschedastci. Lo si vede anche dai seguenti grafici:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d$pil,d$urbana,pch=19,xlab="PIL",ylab="Urbana")
+abline(mod1,col=2,lwd=3) #-- abline del modello lineare
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(fitted(mod1),resid(mod1),pch=19,xlab="Predicted",ylab="Residual")
+plot(fitted(mod1),d$deaths,pch=19,xlab="Predicted",ylab="Deaths")
+```
+
+Si verifica ora se sono più appropriati modelli non lineari. Iniziamo con modelli di grado 2, 3 e 4.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod2 <- lm(urbana~pil+I(pil^2),d) 
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+pander(white.test(mod2),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod2),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod3 <- lm(urbana~pil+I(pil^2)+I(pil^3),d) 
+pander(summary(mod3),big.mark=",")
+pander(anova(mod3),big.mark=",")
+pander(white.test(mod3),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod3),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod4 <- lm(urbana~pil+I(pil^2)+I(pil^3)+I(pil^4),d) 
+pander(summary(mod4),big.mark=",")
+pander(anova(mod4),big.mark=",")
+pander(white.test(mod4),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod4),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d$pil,d$urbana,pch=19,xlab="PIL",ylab="Urbana")
+lines(seq(0,200000,1),predict(mod2,data.frame(pil=seq(0,200000,1))),col=2,lwd=2)
+lines(seq(0,200000,1),predict(mod3,data.frame(pil=seq(0,200000,1))),col=3,lwd=2)
+lines(seq(0,200000,1),predict(mod4,data.frame(pil=seq(0,200000,1))),col="blue",lwd=2)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(fitted(mod1),resid(mod1),pch=19,xlab="Predicted",ylab="Residual")
+plot(fitted(mod1),d$deaths,pch=19,xlab="Predicted",ylab="Deaths")
+```
+
+Si considerino ora i modelli logaritmici: lin-log (variabile esplicativa $log(PIL)$), log-lineare (variabile dipendente $log(Urbana)$), log-log (variabile dipendente $log(Urbana)$; variabile esplicativa $log(PIL)$).
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod5 <- lm(urbana~I(log(pil)),d) 
+pander(summary(mod5),big.mark=",")
+pander(anova(mod5),big.mark=",")
+pander(white.test(mod5),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod5),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod6 <- lm(I(log(urbana))~pil,d) 
+pander(summary(mod6),big.mark=",")
+pander(anova(mod6),big.mark=",")
+pander(white.test(mod6),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod6),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod7 <- lm(I(log(urbana))~I(log(pil)),d) 
+pander(summary(mod7),big.mark=",")
+pander(anova(mod7),big.mark=",")
+pander(white.test(mod7),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod7),big.mark=",") #-- Durbin-Whatson test
+```
+
+In  tutti e 3 i modelli le variabili esplicative sono significative ma il log-log risulta avere un miglior fitting anche se inferiore nettamente al modello di 4 grado. Si sceglie quindi il modello di 4 grado anche perché nel modello log-log si ha ancora eteroschedasticità degli errori.
+
+
+Si propone ora di studiare il "Pil" in funzione della percentuale di alfabetizzati cominciando con il modello lineare:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(pil~alfabet,d) 
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod1),big.mark=",") #-- Durbin-Whatson test
+```
+
+"Alfabet" è significativa ma il fitting è basso ($R^2=0.3168$). Oltretutto gli errori sono nettamente eteroschedatici come si vede dai grafici e del test di White.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d$alfabet,d$pil,pch=19,xlab="Alfabet",ylab="PIL")
+abline(mod1,col=2,lwd=3) #-- abline del modello lineare
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(fitted(mod1),resid(mod1),pch=19,xlab="Predicted",ylab="Residual")
+plot(fitted(mod1),d$deaths,pch=19,xlab="Predicted",ylab="Deaths")
+```
+
+Si prova a verificare se le cose migliorano con la regressione quadratica.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod2 <- lm(pil~alfabet+I(alfabet^2),d) 
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+pander(white.test(mod2),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod2),big.mark=",") #-- Durbin-Whatson test
+```
+
+Il fitting della funzione quadratica che ha la concavità verso il basso migliora e alfabet è significativo al 1° e 2° grado. Tuttavia come si vede dalla rappresentazione grafica gli errori sono chiaramente ancora eteroschedastici.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d$alfabet,d$pil,pch=19,xlab="Alfabet",ylab="PIL")
+lines(seq(0,100,1),predict(mod2,data.frame(alfabet=seq(0,100,1))),col=2,lwd=2)
+```
+
+Un rapido esame della rappresentazione grafica delle funzioni di 3° 4° grado (provare per esercizio) mostra che esse sono ancora meno appropriate per interpretare la variabile dipendente.
+Si verifica ora la bontà delle funzioni lin-log (variabile esplicativa $log(Alfabet)$), log-lineare (variabile dipendente $log(PIL)$), log-log (variabile dipendente $log(PIL)$, variabile esplicativa $log(Alfabet)$). 
+Nel modello lin-log la variabile esplicativa è significativa ma il fitting è molto basso e gli errori ancora eteroschedastici.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod3 <- lm(pil~I(log(alfabet)),d) 
+pander(summary(mod3),big.mark=",")
+pander(anova(mod3),big.mark=",")
+pander(white.test(mod3),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod3),big.mark=",") #-- Durbin-Whatson test
+```
+
+Nel modello log-lineare il fitting è nettamente migliore, il migliore di tutti i modelli presentati ($R^2=0.6077$); la variabile esplicativa significativa, gli errori normali, omoschedasctici e incorrelati.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod4 <- lm(I(log(pil))~alfabet,d) 
+pander(summary(mod4),big.mark=",")
+pander(anova(mod4),big.mark=",")
+pander(white.test(mod4),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod4),big.mark=",") #-- Durbin-Whatson test
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(d$alfabet,d$pil,pch=19,xlab="Alfabet",ylab="PIL")
+lines(seq(0,100,1),exp(predict(mod4,data.frame(alfabet=seq(0,100,1)))),col=2,lwd=2)
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(fitted(mod4),resid(mod4),pch=19,xlab="Predicted",ylab="Residual")
+plot(fitted(mod4),d$deaths,pch=19,xlab="Predicted",ylab="Deaths")
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+
+plot(hatvalues(mod4),rstudent(mod4),pch=19,xlab="Leverage",ylab="Student - Residual")
+abline(h=2,col=2,lty=2,lwd=2)
+abline(h=-2,col=2,lty=2,lwd=2)
+
+plot(cooks.distance(mod4),pch=19,xlab="Observation Index",ylab="Cook DIstance",type="h")
+abline(h=4/nrow(d),col=2,lty=2,lwd=2)
+
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+hist(resid(mod4),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod4)),col=2,lwd=2)
+```
+
+Anche nel modello log-log la variabile esplicativa è significativa, gli errori eteroschedastici e incorrelati ma il fitting è peggiore che nel modello log-lineare ($R^2=0.5273$). 
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod5 <- lm(I(log(pil))~I(log(alfabet)),d) 
+pander(summary(mod5),big.mark=",")
+pander(anova(mod5),big.mark=",")
+pander(white.test(mod5),big.mark=",") #-- White test (per dettagli ?bptest)
+pander(dwtest(mod5),big.mark=",") #-- Durbin-Whatson test
+```
+
+Quindi si opta per il modello log-lineare. Per migliorare i risultati occorrerebbe eliminare i due outiler e applicare il modello loglineare alle osservazioni rimanenti.
+

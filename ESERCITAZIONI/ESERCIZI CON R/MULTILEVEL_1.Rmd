@@ -1,0 +1,204 @@
+---
+title: 'MULTILEVEL 1 - Data set: CASCHOOL'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il data set contiene informazioni sulle performance dei test, sulle caratteristiche delle scuole e sulla situazione demografica di 420 studenti nei diversi distretti scolastici della California. Ci sono 14 variabili:
+
+1. DISTRICT: codice del distretto
+2. SCHOOL: nome della scuola
+3. COUNTRY: nome della contea
+4. GRADES: metodo di voto utilizzato nella contea
+5. STUDENTS: totale degli studenti nella scuola
+6. TEACHERS: totale degli insegnanti a tempo pieno
+7. CALWORKS: percentuale di studenti che rientrano nel programma pubblico assistenziale CalWorks
+8. LUNCH: percentuale di studenti che hanno diritto ad una riduzione sul prezzo del pranzo
+9. COMPUTERS: numero di computer per classe
+10. EXPENDITURE: spesa per studente
+11. INCOME: reddito medio del distretto (migliaia di USD)
+12. ENGLISH: percentuale di studenti per cui l'inglese è la seconda lingua
+13. READ: punteggio megio nel test di lettura
+14. MATH: punteggio megio nel test di matematica
+
+Variabile dipendente: MATH
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Analisi multilevel
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+library(car)
+library(sjstats)
+library(plotrix)
+library(sjPlot)
+library(sjmisc)
+library(lme4)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\esercizi (3) copia\\1.multilevel\\CASchools.txt"),sep=" ")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- names(d)[6:ncol(d)]
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si propongono la matrice di correlazione tra le variabili e alcune descrittive di base.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+
+```
+
+
+
+## REGRESSIONE MULTILEVEL: Empty Model
+
+Il primo modello proposto è l’empty model.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ 1 + (1 | county),d,REML=T) #-- empty model
+summary(mod1)
+pander(Anova(mod1, type="III"))
+
+mod1_null <- lm(math ~ 1,d) #-- modello nullo
+pander(anova(mod1,mod1_null),big.mark=",") #-- test del rapporto di verosimiglianza
+
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+```
+
+In questo caso come è noto non esistono variabili esplicative e si vede che il coefficiente interclasse è rilevante e pari a 0.273. Il test di verosimiglianza respinge l’ipotesi che il modello non interpreti la variabile dipendente.
+Si propongono poi gli intervalli di confidenza dei parametri casuali inerenti i distretti e quindi la relativa rappresentazione grafica.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")],big.mark=",")
+
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="Country",ylab="Estimate",xaxt="n")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+```
+
+Si osserva che per pochi distretti si può affermare una chiara superiorità in termini di efficacia rispetto ad altri perché l’estremo inferiore di molti si interseca con l’estremo superiore di altri.
+
+
+## REGRESSIONE MULTILEVEL: Random Intercept
+
+Si propone ora un random intercept model con variabili di primo livello "calworks"" e "read" e la loro interazione. 
+
+Si è visto che il coefficiente intraclasse si dimezza perché una buona parte della varianza complessiva viene spiegata dalla variabili esplicative di primo livello.                 
+Tutte le variabili risultano essere significative.     
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ calworks + read + calworks*read + (1| county),d,REML=F) #-- empty model
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+```
+
+
+
+## REGRESSIONE MULTILEVEL: Random Slope
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ calworks + read + calworks*read + (calworks| county),d,REML=T) #-- empty model
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+```
+
+Il coefficiente di correlazione dovrebbe essere calcolato in modo diverso tenendo conto della correlazione tra i coefficienti casuali di 1 e 2 livello che risulta negativa. Il coefficiente intraclasse calcolato in modo da tenere conto della correlazione fra coefficienti casuali di 1° e 2° livello vale 0.207.
+Il modello rimane significativo come ogni variabile.
+
+Si presentano ora i grafici per l’intercetta e il parametro di regressione casuale inerente "calworks".
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$upper <- res$data$y+res$data$ci
+res$data$lower <- res$data$y-res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="calworks")
+
+pander(res_int[1:10,c("ID","y","upper","lower")],big.mark=",")
+pander(res_hw[1:10,c("ID","y","upper","lower")],big.mark=",")
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="Country",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+
+plotCI(1:nrow(res_hw),res_hw$y,ui=res_hw$upper, li=res_hw$lower,pch=19,scol="blue",xlab="Country",ylab="Estimate",main="Calworks")
+abline(h=mean(res_hw$y),col=2,lwd=3,lty=2)
+
+```
+
+Si vede come gli intervalli di confidenza si intersecano in gran parte in entrambi i casi e rendono difficile la costruzione di una graduatoria.

@@ -1,0 +1,244 @@
+---
+title: 'MULTI 1 - Data set: COUNTRIES'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+In questo dataset sono 12 variabili su 38 osservazioni:
+
+1. REGION: regione della country
+2. AREA: area della country ($Km^2$)
+3. IRRIGATED: area di campi irrigati ($Km^2$)
+4. POPULATION: popolazione in milioni di persone
+5. UNDER.14: % di popolazione con meno di 14 anni
+6. LIFE.EXPECTANCY: speranza di vita alla nascita in anni
+7. LITERACY.RATE: tasso di alfabetismo
+8. UNEMPLOYMENT: tasso di disoccupazione
+9. ISPS/MILLION: numero di ISPs per milione di persone
+10. TVs/PERSON: numero di televisioni per persona
+11. RAILWAYS: lunghezza in km della rete ferroviaria
+12. AIRPORTS: numero di aeroporti
+
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione Multivariata
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+library(car)
+library(sjstats)
+library(plotrix)
+library(sjPlot)
+library(sjmisc)
+library(lme4)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\esercizi (5)  copia\\1.mult\\countries.txt"),sep="\t")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("Life.expectancy","Unemployment","Literacy.Rate","ISPs.million","Irrigated","Under.14")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si vuole studiare la dipendenza delle variabili "life_expectancy" e "Unemployment" da "ISPs_million", "irrigated", "Under_14", "Literacy_Rate".
+Si propongono dapprima le statistiche descrittive, a seguire le matrici di correlazione tra variabili dipendenti, tra variabili esplicative e tra variabili dipendenti.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+
+```
+
+Non esistono correlazioni particolarmente forti che facciano pensare a collinearità o legami di dipendenza lineare perfetta. 
+Si propongano ora le regressioni uni variate cominciando ora la variabile dipendente "life_expentancy".
+
+> >
+
+
+## ESERCIZIO 1
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(Life.expectancy ~ ISPs.million + Irrigated + Under.14 + Literacy.Rate, d)
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+```
+
+L’aspettativa alla nascita dipende solo da "Under 14" che è l’unica variabile significativa e il fitting è elevato ($R^2=0.6570$). 
+Si verifica dai grafici e dal test di White che gli errori sono omoschedastici.
+Dal Q-Q plot e dalla distribuzione dei residui la distribuzione appare normale
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+
+plot(mod1,which=2,pch=19)
+
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+```
+
+Si osserva qualche outlier che andrebbe eliminato:
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(hatvalues(mod1),rstudent(mod1),pch=19,xlab="Leverage",ylab="Student - Residual")
+abline(h=2,col=2,lty=2,lwd=2)
+abline(h=-2,col=2,lty=2,lwd=2)
+
+plot(cooks.distance(mod1),pch=19,xlab="Observation Index",ylab="Cook DIstance",type="h")
+points(cooks.distance(mod1),pch=19)
+abline(h=4/nrow(d),col=2,lty=2,lwd=2)
+```
+
+Si passa ora alla regressione multipla dove la variabile dipendente è "unemployment."
+Anche in questo caso l’unica variabile significativa rimane "under 14" con un discreto fitting. 
+Gli errori sono anche in questo caso omoschedastici e gli errori sono anche non correlati con distribuzione normale.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod2 <- lm(Unemployment ~ ISPs.million + Irrigated + Under.14 + Literacy.Rate, d)
+pander(summary(mod2),big.mark=",")
+pander(anova(mod2),big.mark=",")
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(white.test(mod2),big.mark=",")
+pander(dwtest(mod2),big.mark=",")
+
+plot(mod2,which=2,pch=19)
+
+hist(resid(mod2),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod2)),col=2,lwd=2)
+```
+
+Si osserva anceh in questo caso che qualche outlier che andrebbe eliminato:
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+plot(hatvalues(mod2),rstudent(mod2),pch=19,xlab="Leverage",ylab="Student - Residual")
+abline(h=2,col=2,lty=2,lwd=2)
+abline(h=-2,col=2,lty=2,lwd=2)
+
+plot(cooks.distance(mod2),pch=19,xlab="Observation Index",ylab="Cook DIstance",type="h")
+points(cooks.distance(mod2),pch=19)
+abline(h=4/nrow(d),col=2,lty=2,lwd=2)
+```
+
+Rinunciando a eliminare gli outlier (provare per esercizio) come sarebbe comunque opportuno si passa ora alla regressione multivariata.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod3 <- lm(cbind(Unemployment,Life.expectancy) ~ ISPs.million + Irrigated + Under.14 + Literacy.Rate, d)
+
+#-- calcolo correlazione parziale tra "Life.expectancy" e "Unemployment" 
+#-- al netto delle altre variabili
+library(ppcor)
+pander(pcor.test(d$Life.expectancy,d$Unemployment,d[,c("ISPs.million","Irrigated","Under.14","Literacy.Rate")]))
+
+summary(mod3)
+pander(manova(mod3),big.mark=",")
+Anova(mod3, type="III")
+```
+
+Il modello multivariato con le stesse variabili esplicative sotto il profilo descrittivo è l'accostamento di due regressioni multiple che vengono risolte l’una indipendentemente dall' altra perciò gli $R^2$ e le stime dei parametri usando il test sono identici. 
+
+La variabile "under 14", come previsto risulta significativa.
+"Literacy" non risulta significativa
+
+Si passa ora a verificare ipotesi multiple mediante il test Manova cominciando con le 2 variabili Isps e literacy che risultano congiuntamente non significative:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+summary(manova(cbind(Life.expectancy, Unemployment) ~ ISPs.million, data = d))
+Anova(lm(cbind(Life.expectancy, Unemployment) ~ ISPs.million, data = d),type="III")
+
+summary(manova(cbind(Life.expectancy, Unemployment) ~ Irrigated, data = d))
+summary(manova(cbind(Life.expectancy, Unemployment) ~ Under.14, data = d))
+summary(manova(cbind(Life.expectancy, Unemployment) ~ Literacy.Rate, data = d))
+```
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+summary(manova(cbind(Life.expectancy, Unemployment) ~ Literacy.Rate + ISPs.million, data = d))
+Anova(lm(cbind(Life.expectancy, Unemployment) ~ Literacy.Rate + ISPs.million, data = d),type="III")
+
+summary(manova(cbind(Life.expectancy, Unemployment) ~ Irrigated + Under.14, data = d))
+```
+
+
+
+

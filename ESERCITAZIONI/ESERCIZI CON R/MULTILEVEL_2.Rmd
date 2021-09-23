@@ -1,0 +1,336 @@
+---
+title: 'MULTILEVEL 2 - Data set: IMM10'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+In questo data set sono contenuti i dati riferiti a 260 studenti dipartiti in 10 scuole con le seguenti variabili:
+
+1. HOMEWORK: numero di ore settimanali implegate per svolgere i compiti di matematica
+2. MATH: punteggio conseguito nel test di matematica
+3. MEANSES: media dello stato socio-economico degli studenti nelle singole scuole
+4. PARENTED: grado di educazione dei genitori
+5. PERCMIN: presenza di minoranze (in percentuale) nelle singole scuole
+6. PUBLIC: scuola pubblica (1) o privata (0)
+7. RACE: razza dello studente. 1=asiatico, 2=ispanico, 3=di colore, 4=bianco, 5=nativo americano
+8. RATIO: rapporto tra numero di alunni e numero di insegnanti all'interno delle singole scuole
+9. REGION: codice identificativo della regione in cui è situata la scuola
+10. SCHID: codice identificativo della scuola
+11. SCHNUM: scuola frequentata dallo studente
+12. SCSIZE: dimensioni della scuola (da 1 a 6)
+13. SCTYPE: tipologia della scuola. 1=pubblica, 2=cattolica, 3=privata con altra religione, 4=privata non religiosa
+14. SES: status socio-economico dello studente
+15. SEX: genere dello studente. 1=maschio, 2=femmina
+16. STUID: codice identificativo dello studente
+17. URBAN: codice identificativo dell'area in cui è sita la scuola
+18. WHITE: lo studente è di razza bianca (1) oppure appartiene ad un altra razza (0)
+
+Variabile dipendente: MATH
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Analisi multilevel
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+library(car)
+library(sjstats)
+library(plotrix)
+library(sjPlot)
+library(sjmisc)
+library(lme4)
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\esercizi (3) copia\\2.multilevel\\imm10.csv"),sep=";")
+
+#-- Fisso la decima scuola come riferimento
+d$schnum <- factor(d$schnum)
+contrasts(d$schnum) <- contr.treatment(levels(d$schnum),base=which(levels(d$schnum) == '10'))
+
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("homework","percmin","math","meanses")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si propongono la matrice di correlazione tra le variabili e alcune descrittive di base.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC])) #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC])) #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,2))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+
+```
+
+Proponiamo ora il box plot per la variabile "math" che sarà la variabile dipendente nel modello Multilevel:
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+boxplot(d$math~d$schid,main="Math by school",col="lightblue",ylab="math")
+```
+
+
+## ANALISI DELLA VARIANZA (EFFETTI FISSI)
+
+Si consideri ora innanzitutto una analisi della varianza a effetti fissi.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lm(math ~ schnum,d)
+summary(mod1)
+pander(anova(mod1),big.mark=",")
+
+```
+
+Viene respinta l’ipotesi che le medie dei gruppi siano tutte uguali. 
+Analizzandole e avendo come riferimento la media del gruppo 10 si osserva ad esempio che la scuola 7 ha un punteggio in math di 14.97 punti più elevato rispetto alla scuola 10 stessa, mentre la scuola 2 avrà un punteggio inferiore in media di 5.7.
+Si passa ora al modello empty.
+
+#### REGRESSIONE MULTILEVEL: Empty Model
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ (1| schnum),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+mod1_null <- lm(math ~ 1,d) 
+pander(anova(mod1,mod1_null),big.mark=",")
+
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")])
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+
+```
+
+
+E’ respinta l’ipotesi che il modello non interpreti i dati e dal rapporto tra varianza spiegata e totale si ricava un coefficiente intraclasse pari a 0.32 che è elevato, e segnala una buona variabilità fra le scuole nei punteggi di matematica.
+Si propongono poi i valori attesi e gli intervalli di confidenza dei parametri casuali inerenti le singole scuole.
+Per i parametri casuali il modello postula graduatorie basate su valori attesi e intervalli di confidenza. 
+
+Come è noto una scuola A può ritenersi superiore a una scuola B in termini di efficacia solo se l’estremo inferiore dell’intervallo di confidenza di A sia superiore all’estremo superiore dell’intervallo di confidenza di B. 
+Si può notare che 6 scuole su 10 hanno un andamento peggiore rispetto a quello della  media generale. Si può verificare che solo l’effetto casuale del gruppo 10 è significativo.
+Si passa poi a proporre il modello random intercept introducendo prima la variabile esplicativa "homework".
+
+
+#### REGRESSIONE MULTILEVEL: Random Intercept
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ homework + (1| schnum),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")],big.mark=",")
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+
+```
+
+Il coefficiente di correlazione intraclasse si abbassa di pochissimo (0.28) in quanto si abbassano in uguale proporzione varianza spiegata e residua. 
+Il modello interpreta bene i dati e la variabile "homework" risulta altresi significativa. 
+Anche il test di 3° tipo degli effetti fissi conferma questa significatività.
+
+Si propongono  i valori attesi e gli intervalli di confidenza dei parametri casuali inerenti i gruppi.
+Si vede come il ranking  muti in modo rilevante al caso empty. Ciò mostra che la diversa distribuzione fra le scuole della variabile "homework" è all’origine di parte della variabilità di "math" attribuito in prima istanza nel modello empty alla efficacia delle scuole. 
+
+Tenere conto di questo non solo modifica l’efficacia complessiva delle scuole  ma anche l’efficacia relativa di ogni scuola rispetto ad altre. Si può verificare che solo l’effetto casuale del gruppo 7 è significativo e anche in questo caso quindi la situazione cambia radicalmente rispetto al modello empty.
+
+Si aggiunge ora nel modello mixed anche la variabile esplicativa "ses".
+
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ homework + ses + (1| schnum),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+pander(data.frame("ICC"=icc(mod1)),big.mark=",") #-- ICC 
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+pander(res$data[1:10,c("ID","y","upper","lower")],big.mark=",")
+plotCI(1:nrow(res$data),res$data$y,ui=res$data$upper, li=res$data$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res$data$y),col=2,lwd=3,lty=2)
+
+```
+
+Il coefficiente di correlazione intraclasse si dimezza (0.136) perché diminuisce la varianza spiegata molto più che la varianza complessiva a segnalare che la variabile "ses", molto più che "homework" cattura la variabilità di "math". In altre parole molta della variabilità che sembrava doversi attribuire alle scuole è invece dovuta alla diversa distribuzione fra le scuole della variabile "ses".
+
+La diversa composizione socio-economica delle scuole cattura quindi una parte della variabilità della variabile dipendente e non può essere quindi attribuita alla diversa efficacia delle scuole. Per il resto anche questo modello è significativo come anche le variabili esplicative. Il test di 3° tipo degli effetti fissi conferma la significatività di queste variabili.
+
+Si osserva come sia i valori attesi che gli intervalli di confidenza dei gruppi mutano per la diversa influenza dello stato-socioeconomico nelle diverse scuole. Tenere conto di questo non solo modifica l’efficacia complessiva delle scuole ma anche l’efficacia relativa di ogni scuola rispetto ad altre. Si può verificare che solo l’effetto casuale del gruppo 7 rimane  significativo anche se in misura minore che nel caso con variabile esplicativa solo "homework" e in parte diviene significativo l’effetto 2 e 4.
+Si passa ora a un modello random effect in cui anche il parametro relativo a "homework" è di tipo casuale.
+
+#### REGRESSIONE MULTILEVEL: Random Slope
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE}
+#-- R CODE
+mod1 <- lmer(math ~ homework + ses + (homework| schnum),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="homework")
+
+pander(res_int[1:10,c("ID","y","upper","lower")])
+pander(res_hw[1:10,c("ID","y","upper","lower")])
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+
+plotCI(1:nrow(res_hw),res_hw$y,ui=res_hw$upper, li=res_hw$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Homework")
+abline(h=mean(res_hw$y),col=2,lwd=3,lty=2)
+
+```
+
+Il coefficiente intraclasse non può più essere calcolato nel modo semplice precedente perché si deve tener conto della correlazione tra effetti casuali relativi a "homework" e alle scuole nel loro complesso. 
+Gli effetti casuali complessivi relativi all’efficacia delle scuole nel loro complesso e "homework" sono significativi anche se con un p-value non molto basso. 
+La correlazione tra effetti relativi alle scuole e a "homework" è negativa. Inoltre il modello interpreta bene i dati ma la parte fissa della variabile "homework" non è più significativa. Questo risultato è confermato anche dal test 3 degli effetti fissi. Per ciò che concerne gli effetti casuali di "homework" diversi tra scuola e scuola non risulta significativo per nessun p-value eccetto quello relativo alla scuola 7; per le intercette inerenti l’efficacia relativa di ogni scuola solo quello relativo alla scuola 2. 
+
+Si aggiunge ora la variabile SES di primo livello e ratio di secondo.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lmer(math ~ homework + ses + ratio + (homework | schnum),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="homework")
+
+pander(res_int[1:10,c("ID","y","upper","lower")],big.mark=",")
+pander(res_hw[1:10,c("ID","y","upper","lower")],big.mark=",")
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+
+plotCI(1:nrow(res_hw),res_hw$y,ui=res_hw$upper, li=res_hw$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Homework")
+abline(h=mean(res_hw$y),col=2,lwd=3,lty=2)
+```
+
+
+Il modello interpreta bene i dati e tutti i parametri casuali sia quello relativo alle scuole che a "homework" è significativo. 
+La correlazione tra il parametro relativo alle scuole e "homework" rimane negativo. "ses" come parametro fisso è significativo come "ratio" per un livello alpha di 0.05, mentre la parte fissa di "homework" non è significativa. Tra i parametri casuali inerenti le scuole il 6 e il 9 non sono significativi mentre per ciò che concerne homework non lo è il 7. Per entrambi i tipi di parametri casuali il modello postula graduatorie basati su valori attesi e intervalli di confidenza. 
+Si aggiunge infine un modello random che ha fra le variabili esplicative anche l’interazione fra home e ratio.
+
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lmer(math ~ homework + ses + ratio + homework*ratio + (homework| schnum),d,REML=T)
+summary(mod1)
+pander(Anova(mod1, type="III"),big.mark=",")
+
+res <- sjp.lmer(mod1, type = "re.qq", sort.est = "sort.all",show.values=T,title="T",prnt.plot=F)
+res$data$lower <- res$data$y-res$data$ci
+res$data$upper <- res$data$y+res$data$ci
+
+res_int <- subset(res$data,ind=="(Intercept)")
+res_hw <- subset(res$data,ind=="homework")
+
+pander(res_int[1:10,c("ID","y","upper","lower")],big.mark=",")
+pander(res_hw[1:10,c("ID","y","upper","lower")],big.mark=",")
+
+plotCI(1:nrow(res_int),res_int$y,ui=res_int$upper, li=res_int$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Intercept")
+abline(h=mean(res_int$y),col=2,lwd=3,lty=2)
+
+plotCI(1:nrow(res_hw),res_hw$y,ui=res_hw$upper, li=res_hw$lower,pch=19,scol="blue",xlab="School",ylab="Estimate",main="Homework")
+abline(h=mean(res_hw$y),col=2,lwd=3,lty=2)
+
+```
+
+
+Anche questo modello risulta significativo come tutti i parametri casuali inerenti scuole e "homework" e la loro correlazione che rimane negativa. In questo caso tra i parametri fissi però oltre a "homework" risultano non significativi anche ratio e l’interazione ratio-homework. 
+Tra i parametri casuali inerenti le scuole il 5, 6, 7, 9, 10 non sono significativi mentre per ciò che concerne homework non lo è il 4, 6, 7, 9. 
+Come si vede c’è un altro rilevante cambiamento dei ranking rispetto al modello precedente.

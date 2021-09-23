@@ -1,0 +1,129 @@
+---
+title: 'LINEAR 7 - Data set: BIKE SHARING'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il data set è composto da 731 osservazioni raccolte con cadenza giornaliera riguardanti il numero di biciclette affittate a Washington. Le variabili raccolte sono le seguenti:
+
+1. DATE: giorno della rilevazione
+2. SEASON, YEAR, MONTH, WEEKDAY: stagione, anno, mese e giorno della settimana della rilevazione
+3. HOLIDAY: dummy per indicare se il giorno è festivo oppure no
+4. WORKINGDAY: dummy per indicare se il giorno considerato è lavorativo o meno
+5. WEATHERSIT: condizioni climatiche con 4 modalità (cielo chiaro, nebbia o nuvoloso, pioggia, temporale)
+6. TEMP: temperatura media 
+7. ATEMP: temperatura media percepita
+8. HUM: valore dell'unidità normalizzato
+9. WINDSPEED: velocità massima del vento normalizzata
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione lineare
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\4.tutto(4)\\1.tutto\\Day.csv"),sep=",")
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("temp","atemp","hum","windspeed","cnt")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+Si propongono la matrice di correlazione tra le variabili e alcune descrittive di base. 
+Si analizza l’influenza delle variabili climatiche sull’affitto di biciclette a Washington nel periodo 2011-2012.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+
+d$dteday <- as.Date(paste(d$dteday))
+
+aggr <- aggregate(d$cnt,list(day=d$dteday),sum)
+aggr$day <- as.Date(aggr$day)
+par(mfrow=c(1,1))
+plot(aggr[,1],aggr[,2],type="l",xlab="Date",ylab="QTY",col="yellow")
+lines(aggr[,1],lowess(aggr[,2],f = .3)$y,col="blue",lwd=3)
+
+```
+
+La serie storica denota dei picchi nei mesi estivi e quindi stagionalità e un trend crescente. Sarebbe da verificare anche la omoschedastictà degli errori ma analizziamo solo la multicollinerità e gli outlier.  Prima di impostare il modello lineare si analizza la correlazione far le variabili esplicative.
+
+Le variabili esplicative inizialmente utilizzate sono "temp", "atemp", "hum", "windspeed". Si nota la fortissima collinearità fra "temp" e  "atemp", come è naturale essendo una la temperatura registrata e l’altra la temperatura percepita. Entrambe sono correlate positivamente con "cnt": la gente usa più la bicicletta tanto più fa caldo.
+
+A questo punto si propone un primo modello lineare
+
+## REGRESSIONE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(cnt~temp + atemp + hum + windspeed,d)
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+```
+
+Dall’F value si verifica che è respinta l’ipotesi nulla che il modello nel suo complesso non spieghi per nulla la variabile esplicativa affitto delle biciclette. Il valore dell’$R^2$ che si colloca su valori medi ci dice che la capacità di spiegazione non è elevatissima ma neanche scarsa. 
+I parametri significativi per cui l’ipotesi nulla viene respinta sono "hum" e "windspeed" e in parte "atemp". 
+Considerando il segno le biciclette sono affittate tanto più quanto più si percepisce un’ alta temperatura e quanto meno è umido e c’e vento. 
+

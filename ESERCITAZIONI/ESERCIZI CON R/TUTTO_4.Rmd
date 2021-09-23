@@ -1,0 +1,141 @@
+---
+title: 'LINEAR 10 - Data set: PM10'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+  editor_options:
+    chunk_output_type: console
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUZIONE
+
+Il data set contiene informazioni relative all'inquinamento dell'aria rilevato in corrispondenza delle strade e degli snodi stradali principali, e contiene le seguenti variabili:
+
+1. PM10: concentrazione di particelle di pm10
+2. CARS: numero di auto che transitano in un'ora
+3. TEMP: temperatura misurata a 2 metri dal suolo
+4. WIND: velocità del vento (metri/secondo)
+5. D_TEMP: differenza tra temperatura misurata a 25 metri dal suolo e a 2 metri dal suolo
+6. HOURS: numero di ore trascorse dalla mezzanotte del giorno di rilevazione
+
+Analisi proposte:
+
+1. Statistiche descrittive
+2. Regressione lineare
+
+> >
+
+```{r,eval=TRUE,echo=T,warning=FALSE,message=F,results="asis"}
+#-- R CODE
+
+library(pander)
+library(car)
+library(olsrr)
+library(systemfit)
+library(het.test)
+panderOptions('knitr.auto.asis', FALSE)
+
+#-- White test function
+white.test <- function(lmod,data=d){
+  u2 <- lmod$residuals^2
+  y <- fitted(lmod)
+  Ru2 <- summary(lm(u2 ~ y + I(y^2)))$r.squared
+  LM <- nrow(data)*Ru2
+  p.value <- 1-pchisq(LM, 2)
+  data.frame("Test statistic"=LM,"P value"=p.value)
+}
+
+#-- funzione per ottenere osservazioni outlier univariate
+FIND_EXTREME_OBSERVARION <- function(x,sd_factor=2){
+  which(x>mean(x)+sd_factor*sd(x) | x<mean(x)-sd_factor*sd(x))  
+}
+
+#-- import dei dati
+ABSOLUTE_PATH <- "C:\\Users\\sbarberis\\Dropbox\\MODELLI STATISTICI"
+d <- read.csv(paste0(ABSOLUTE_PATH,"\\F. Esercizi(22) copia\\4.tutto(4)\\4.tutto\\PM_10.csv"),sep=";")
+d$cars <- as.numeric(gsub(",","",d$cars))
+
+#-- vettore di variabili numeriche presenti nei dati
+VAR_NUMERIC <- c("pm10","cars","temp","wind","d_temp")
+
+#-- print delle prime 6 righe del dataset
+pander(head(d),big.mark=",")
+```
+
+> >
+
+## STATISTICHE DESCRITTIVE
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+pander(summary(d[,VAR_NUMERIC]),big.mark=",") #-- statistiche descrittive
+pander(cor(d[,VAR_NUMERIC]),big.mark=",") #-- matrice di correlazione
+plot(d[,VAR_NUMERIC],pch=19,cex=.5) #-- scatter plot multivariato
+
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  boxplot(d[,i],main=i,col="lightblue",ylab=i)
+}
+par(mfrow=c(2,3))
+for(i in VAR_NUMERIC){
+  hist(d[,i],main=i,col="lightblue",xlab=i,freq=F)
+}
+```
+
+## REGRESSIONE
+
+Non appaiono particolari forti correlazioni fra le variabili. Verificando con il condition index si vede del resto che non esiste  collinearità.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+mod1 <- lm(pm10~cars + temp + wind + d_temp + hours,d)
+pander(ols_eigen_cindex(mod1),big.mark=",")
+
+pander(summary(mod1),big.mark=",")
+pander(anova(mod1),big.mark=",")
+pander(white.test(mod1),big.mark=",")
+pander(dwtest(mod1),big.mark=",")
+```
+
+Si  analizza invece attraverso i residui l’eteroschedasticità  degli errori
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis"}
+#-- R CODE
+plot(d$cars,resid(mod1),pch=19,xlab="Cars",ylab="Residual")
+plot(d$wind,resid(mod1),pch=19,xlab="Cars",ylab="Residual")
+plot(d$hours,resid(mod1),pch=19,xlab="Cars",ylab="Residual")
+```
+
+La configurazione dei residui è bene lontana da una forma rettangolare porta a ipotizzare eteroschedasticità degli errori stessi.
+
+Tale eteroschedasticità è confermata anche dal test di White che respinge nettamente l’ipotesi di omoschdasticità.
+
+Il test Durbin Watson non respinge invece l’ipotesi di incorrelazione fra gli errori come si vede dal valore della statistica test e dal p-value.
+
+Per ciò che concerne la normalità sia la distribuzione dei residui, che il Q-Q plot che i test sulla normalità mostrano che i residui stessi non sono normali.
+
+> >
+
+```{r,fig.width=6,echo=T,message=FALSE,results="asis",warning =FALSE}
+#-- R CODE
+
+plot(mod1,which=2,pch=19)
+
+hist(resid(mod1),col="lightblue",freq=F,xlab="Resid",main="")
+lines(density(resid(mod1)),col=2,lwd=2)
+
+pander(shapiro.test(resid(mod1))) 
+pander(ks.test(resid(mod1),"pnorm")) 
+```
